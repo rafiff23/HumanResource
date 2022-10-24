@@ -1,0 +1,284 @@
+---
+title: "main"
+output: html_document
+date: "2022-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("tidyr")
+# install.packages("dplyr")
+# install.packages("ggplot2")
+# install.packages("readr")
+# install.packages("lubridate")
+# install.packages("Plotly")
+# install.packages("hrbrthemes")
+# install.packages("viridis")
+# install.packages("ggridges")
+# install.packages("highcharter")
+# install.packages("rio")
+# install.packages("purrr")
+
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+library(hrbrthemes)
+library(viridis)
+library(ggridges)
+library(highcharter)
+library(rio)
+library(purrr)
+library(stringr)
+library(scales)
+library(stringr)
+```
+
+```{r}
+df <- read_csv("data_input/HRdataset_v14.csv")
+```
+
+```{r}
+glimpse(df)
+```
+
+```{r}
+class(df$CitizenDesc)
+```
+```{r}
+unique(df$CitizenDesc)
+```
+## CLEANSING ## 
+
+# To Factor
+1. RecruitmentSource : 9 levels
+2. PerformanceScore : 3 levels
+3. EmpSatisfaction : 3 levels
+4. Department : 5 levels
+5. EmploymentStatus : 2 levels
+6. TermReason : 18 levels
+7. sex : 2 levels
+8. CitizenDesc : 2 levels
+
+# To Date
+1. DOB
+2. DateofHire
+3. DateofTermination
+4. LastPerformanceReview_Date
+
+# To Logical
+1. Married Id
+2. FromDiversityJobFairID
+
+#drop columns
+1. ZIP
+2. HispanicLatino
+3. RaceDesc
+```{r}
+df_clean <- df %>% 
+  mutate_at(.vars = c("RecruitmentSource", "PerformanceScore", "EmpSatisfaction", "Department", "EmploymentStatus", "TermReason", "Sex","CitizenDesc" ), 
+            .funs = as.factor) %>% 
+  mutate_at(.vars = c("MarriedID", "FromDiversityJobFairID"), 
+            .funs = as.logical)
+
+df_clean$DateofHire <- mdy(df$DateofHire) 
+df_clean$DOB <- mdy(df$DOB) 
+df_clean$DateofTermination <- mdy(df$DateofTermination)
+df_clean$LastPerformanceReview_Date <- mdy(df$LastPerformanceReview_Date)
+
+df_clean <- select(df_clean, -Zip, -HispanicLatino, -RaceDesc)
+glimpse(df_clean)
+```
+## ANALYSING ##
+
+```{r}
+df_clean
+```
+
+
+```{r}
+plot1 <- 
+  ggplot(data= df_clean, mapping = aes(x = Department, y = EngagementSurvey)) +
+  geom_boxplot(mapping = aes(fill = Department))
+
+ggplotly(plot1)
+```
+
+```{r}
+plot5 <- 
+  ggplot(data = df_clean, mapping = aes(x = df_clean$EngagementSurvey, y = Salary))+
+  geom_line()
+
+ggplotly(plot5)
+```
+
+```{r}
+hc <- hchart(
+  density(df_clean$Salary), type = "area", 
+  color = "steelblue", name = "Male"
+  )
+
+hc
+```
+
+```{r}
+p2 <- ggplot(data=df_clean, aes(x=Salary, group=EmpSatisfaction, fill=EmpSatisfaction)) +
+    geom_density(adjust=1.5, alpha=.4) +
+    theme_ipsum()
+
+ggplotly(p2)
+```
+```{r}
+hchart(df_clean, 
+         type = "column", 
+         hcaes(x = PerformanceScore, 
+               y = Salary, 
+               group = Department))
+```
+```{r}
+hchart(df_clean,
+       type = "column", 
+       hcaes(x = Department, 
+             y = Salary,
+             group = EmpSatisfaction))%>% 
+    hc_tooltip(
+      useHTML = TRUE
+    ) %>% hc_exporting(enabled = TRUE) 
+  # %>% 
+  #   hc_tooltip(crosshairs = TRUE,
+  #              shared = TRUE, borderWidth = 2)
+```
+
+
+```{r}
+hc <- hchart(df_clean, "packedbubble", hcaes(name = Position,value = EngagementSurvey,group = RecruitmentSource))
+
+q95 <- as.numeric(quantile(df_clean$EngagementSurvey, .95))
+
+hc %>% 
+  hc_tooltip(
+
+        useHTML = TRUE,
+    pointFormat = "<b>{point.name}:</b> {point.value}"
+  ) %>% 
+  hc_plotOptions(
+    packedbubble = list(
+      maxSize = "50%",
+      zMin = 0,
+      layoutAlgorithm = list(
+        gravitationalConstant =  0.05,
+        splitSeries =  TRUE, # TRUE to group points
+        seriesInteraction = TRUE,
+        dragBetweenSeries = TRUE,
+        parentNodeLimit = TRUE
+      ),
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.name}",
+        filter = list(
+          property = "y",
+          operator = ">",
+          value = q95
+        ),
+        style = list(
+          color = "black",
+          textOutline = "none",
+          fontWeight = "normal"
+        )
+      )
+    )
+  )
+```
+
+
+```{r}
+options(dplyr.summarise.inform = FALSE)
+
+df_baru <- 
+  select(df_clean, Department, Position, Salary) %>% 
+  arrange(desc(Salary)) 
+  
+  df_baru_2 <- df_baru %>% 
+  group_by(Department) %>% 
+  summarise(dailyAvg = mean(Salary))
+
+drilldown <- df_baru %>%
+  # group_by(Department, Position, .add = T) %>% 
+  group_nest(Department) %>%
+  mutate(
+    id = Department,
+    type = "column",
+    data = map(data, ~ .x %>%
+      mutate(
+        name = Position,
+        y    = Salary
+      ) %>%
+      list_parse())
+  )
+
+mygraph <- hchart(
+  df_baru_2,
+  "column",
+  hcaes(x = Department, y = dailyAvg, name = Department, drilldown = Department),
+  name = "Salary",
+  colorByPoint = TRUE
+)
+
+mygraph <- mygraph %>% 
+  hc_drilldown(
+    allowPointDrilldown = TRUE,
+    series = list_parse(drilldown)
+  ) 
+
+mygraph <- mygraph %>%
+  hc_tooltip(
+    useHTML = TRUE 
+  ) %>% 
+  hc_yAxis( title = "") %>% 
+  hc_xAxis( title = "" ) %>%
+  hc_title(text = "Salary" )
+
+mygraph
+```
+
+```{r}
+unique(df_clean$Department)
+```
+```{r}
+hchart(df_clean, "scatter", hcaes(x= EngagementSurvey,y= SpecialProjectsCount, name = Position, group = Department)) %>% 
+    hc_chart(type = "scatter") %>%
+    hc_tooltip(
+      headerFormat = "",
+      pointFormat = "<b>{point.Position}</b> is in <b>{point.Department}</b>"
+    ) 
+```
+```{r}
+unique(df_clean$ManagerName)
+```
+```{r}
+hchart(df_clean, "organization", hcaes(from = ManagerName, to = Employee_Name)) %>% 
+  hc_chart(inverted = TRUE)
+```
+
+```{r}
+hchart(df_clean, "lollipop", hcaes(name = Employee_Name, low = Absences ),name = "Absences") %>% 
+  hc_xAxis(type = "category") %>% 
+  hc_yAxis(labels = list(format = "{value}"))
+```
+
+```{r}
+df_clean_2 <- df_clean %>% mutate_at(.vars = c("EmpSatisfaction"), .funs = as.numeric) 
+hchart(df_clean_2, "lollipop", hcaes(name = Employee_Name, low = EmpSatisfaction),name = "EmpSatisfaction") %>% 
+      hc_xAxis(type = "category") %>% 
+      hc_yAxis(labels = list(format = "{value}")) %>% 
+      hc_title(text="Employee Satisfaction under {var}",align="center")
+```
+```{r}
+mean(df$Absences)
+```
+

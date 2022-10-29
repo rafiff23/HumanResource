@@ -1,0 +1,13 @@
+name: HumanResource
+title: HumanResource
+username:
+account: rafif
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7394038
+bundleId: 6434451
+url: https://rafif.shinyapps.io/HumanResource/
+when: 1666606526.55149
+lastSyncTime: 1666606526.5515
+asMultiple: FALSE
+asStatic: FALSE
